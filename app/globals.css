@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Responsive adaptations for the imported FactRoot design. */
+.factroot-home { color: #171717; }
+.factroot-header > div { direction: ltr; }
+.factroot-home button:focus-visible, .factroot-home a:focus-visible,
+.factroot-home textarea:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.factroot-hero h1 { font-size: clamp(30px, 4vw, 48px) !important; }
+@media (max-width: 700px) {
+  .factroot-home { padding: 24px 12px !important; }
+  .factroot-header { padding: 16px !important; justify-content: center !important; gap: 20px !important; }
+  .factroot-logo { width: 75px; height: 75px; }
+  .factroot-header h1 { font-size: 34px !important; }
+  .factroot-header p { font-size: 12px !important; }
+  .factroot-nav { justify-content: center; gap: 16px !important; font-size: 15px !important; }
+  .factroot-check { padding: 22px !important; }
+  .factroot-hero p { font-size: 18px !important; }
+  .factroot-home #about { padding: 28px 20px !important; }
+  .factroot-result { padding: 16px !important; overflow-wrap: anywhere; }
+}
+.factroot-button-tooltip {
+  position: absolute;
+  bottom: calc(100% + 13px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: #142b50;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  direction: rtl;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 30;
+}
+
+.factroot-button-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: #142b50;
+}
+
+.factroot-round-button:hover .factroot-button-tooltip,
+.factroot-round-button:focus-visible .factroot-button-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+/* زر التبديل */
+.factroot-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 15px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factroot-mode-button:focus-visible {
+  outline: 3px solid #60a5fa;
+  outline-offset: 3px;
+}
+
+/* الوضع الداكن */
+html.factroot-dark {
+  color-scheme: dark;
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+}
+
+html.factroot-dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+html.factroot-dark .factroot-home {
+  color: #e2e8f0 !important;
+  background:
+    radial-gradient(
+      circle at 15% 20%,
+      rgba(37, 99, 235, 0.12),
+      transparent 350px
+    ),
+    linear-gradient(180deg, #0f172a, #132039) !important;
+}
+
+html.factroot-dark .factroot-header,
+html.factroot-dark .factroot-check,
+html.factroot-dark .factroot-result,
+html.factroot-dark .factroot-home #about {
+  background: #162235 !important;
+  color: #e2e8f0 !important;
+}
+
+/* البطاقات البيضاء */
+html.factroot-dark .factroot-home div[style*="background: #fff" i],
+html.factroot-dark .factroot-home div[style*="background:#fff" i],
+html.factroot-dark .factroot-home div[style*="background: rgb(255, 255, 255)"],
+html.factroot-dark .factroot-home div[style*="background: #f8fafc" i],
+html.factroot-dark .factroot-home div[style*="background:#f8fafc" i],
+html.factroot-dark .factroot-home div[style*="background: rgb(248, 250, 252)"] {
+  background: #1c2a40 !important;
+}
+
+/* العناوين */
+html.factroot-dark .factroot-header h1,
+html.factroot-dark .factroot-hero h1,
+html.factroot-dark .factroot-check h2,
+html.factroot-dark .factroot-result h2,
+html.factroot-dark .factroot-home #about h2,
+html.factroot-dark .factroot-home #how-it-works h2,
+html.factroot-dark .factroot-home h3,
+html.factroot-dark .factroot-home h4 {
+  color: #bfdbfe !important;
+}
+
+/* النصوص الأساسية */
+html.factroot-dark .factroot-header p,
+html.factroot-dark .factroot-hero p,
+html.factroot-dark .factroot-home #about p,
+html.factroot-dark .factroot-home #how-it-works p,
+html.factroot-dark .factroot-result p {
+  color: #cbd5e1 !important;
+}
+
+/* النصوص الرمادية داخل البطاقات */
+html.factroot-dark .factroot-home [style*="color: #6b7280" i],
+html.factroot-dark .factroot-home [style*="color:#6b7280" i],
+html.factroot-dark .factroot-home [style*="color: rgb(107, 114, 128)"],
+html.factroot-dark .factroot-home [style*="color: #374151" i],
+html.factroot-dark .factroot-home [style*="color:#374151" i],
+html.factroot-dark .factroot-home [style*="color: rgb(55, 65, 81)"] {
+  color: #cbd5e1 !important;
+}
+
+/* مربع الخبر */
+html.factroot-dark .factroot-home textarea {
+  background: #111c2e !important;
+  color: #e2e8f0 !important;
+  border-color: #36465f !important;
+}
+
+html.factroot-dark .factroot-home textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* روابط الشريط العلوي */
+html.factroot-dark .factroot-nav > span {
+  color: #e2e8f0;
+}
+
+/* زر الوضع */
+html.factroot-dark .factroot-mode-button {
+  background: #20334f;
+  border-color: #36465f;
+  color: #bfdbfe;
+}
+
+/* دائرتا الصورة والمايك */
+html.factroot-dark .factroot-round-button {
+  background: #20334f !important;
+  border-color: #36465f !important;
+  color: #93c5fd !important;
+}
