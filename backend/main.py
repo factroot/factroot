@@ -9,7 +9,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import Cookie, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
 from backend.auth import find_user_by_session, get_connection, router as auth_router
 
@@ -24,6 +24,7 @@ ENV_FILE = os.path.join(BASE_DIR, ".env.local")
 load_dotenv(ENV_FILE, override=True)
 
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
+GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY")
 
 print(
     "X TOKEN:",
@@ -84,6 +85,110 @@ def home():
     return {
         "message": "FactRoot Backend يعمل"
     }
+
+
+# =========================
+# فحص أمان الروابط باستخدام Google Safe Browsing
+# =========================
+
+class URLCheck(BaseModel):
+    url: str
+
+
+@app.post("/check-url")
+def check_url_safety(request: URLCheck):
+    from urllib.parse import urlparse
+    import ipaddress
+    import socket
+
+    raw_url = request.url.strip()
+    parsed = urlparse(raw_url)
+
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="أدخل رابطًا صحيحًا يبدأ بـ http أو https.")
+
+    # منع الروابط المحلية والخاصة قبل إرسالها لخدمة الفحص
+    hostname = parsed.hostname.lower()
+    if hostname in ("localhost",) or hostname.endswith(".local"):
+        raise HTTPException(status_code=400, detail="لا يمكن فحص الروابط المحلية.")
+
+    try:
+        addresses = socket.getaddrinfo(hostname, None)
+        for address in addresses:
+            ip = ipaddress.ip_address(address[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise HTTPException(status_code=400, detail="الرابط يشير إلى عنوان داخلي أو غير عام.")
+    except socket.gaierror:
+        return {
+            "status": "تعذر التحقق من الرابط",
+            "news": raw_url, "keywords": [], "accounts_checked": [],
+            "best_match": None, "results": [],
+            "url_safety": {"verdict": "unknown", "score": 50,
+                           "message": "تعذر العثور على نطاق الرابط. لا تفتحه قبل التأكد منه."}
+        }
+
+    if not GOOGLE_SAFE_BROWSING_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="فحص الروابط يحتاج GOOGLE_SAFE_BROWSING_API_KEY في ملف backend/.env.local."
+        )
+
+    api_url = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
+    body = {
+        "client": {"clientId": "FactRoot", "clientVersion": "1.0"},
+        "threatInfo": {
+            "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": raw_url}]
+        }
+    }
+    try:
+        response = requests.post(
+            api_url, params={"key": GOOGLE_SAFE_BROWSING_API_KEY},
+            json=body, timeout=15
+        )
+        if not response.ok:
+            # Google returns a structured error for invalid/disabled API keys.
+            if response.status_code in (400, 403):
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "رفضت Google طلب فحص الرابط. تأكدي من صحة GOOGLE_SAFE_BROWSING_API_KEY "
+                        "وتفعيل Safe Browsing API في Google Cloud."
+                    )
+                )
+
+            raise HTTPException(
+                status_code=502,
+                detail="تعذر الاتصال بخدمة فحص الروابط. حاول لاحقًا."
+            )
+        data = response.json()
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="انتهت مهلة الاتصال بخدمة فحص الروابط. حاول لاحقًا.")
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="تعذر الاتصال بخدمة فحص الروابط. حاول لاحقًا.")
+
+    matches = data.get("matches", [])
+    if matches:
+        safety = {
+            "verdict": "unsafe", "score": 0,
+            "message": "تحذير: صنّفت خدمة Google Safe Browsing الرابط على أنه خطر أو مضلل. تجنب فتحه."
+        }
+        status_text = "تم اكتشاف تهديد محتمل في الرابط"
+    else:
+        safety = {
+            "verdict": "no_known_threat", "score": 90,
+            "message": "لم تعثر Google Safe Browsing على تهديد معروف. هذا لا يضمن أن الرابط آمن 100%."
+        }
+        status_text = "لم يتم العثور على تهديد معروف للرابط"
+
+    return {
+        "status": status_text, "news": raw_url, "keywords": [],
+        "accounts_checked": [], "best_match": None, "results": [],
+        "url_safety": safety
+    }
+
 
 
 # =========================

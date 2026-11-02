@@ -37,6 +37,11 @@ type CheckResult = {
     limit: number;
     remaining: number;
   };
+  url_safety?: {
+    verdict: string;
+    score: number;
+    message: string;
+  };
 };
 
 type GuestUsage = {
@@ -152,15 +157,22 @@ export default function Home() {
       setError("فضلاً أدخل الخبر أولاً.");
       return;
     }
-    const isUrl = /^https?:\/\/\S+$/i.test(news.trim());
+    const inputText = news.trim();
+    const isUrl =
+      /^(https?:\/\/|www\.)/i.test(inputText) ||
+      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:[/:?#][^\s]*)?$/i.test(inputText);
 
-const endpoint = isUrl
-  ? "http://localhost:8000/check-url"
-  : "http://localhost:8000/check";
+    const normalizedUrl = isUrl
+      ? (/^https?:\/\//i.test(inputText) ? inputText : `https://${inputText}`)
+      : "";
 
-const payload = isUrl
-  ? { url: news.trim() }
-  : { text: news };
+    const endpoint = isUrl
+      ? "http://localhost:8000/check-url"
+      : "http://localhost:8000/check";
+
+    const payload = isUrl
+      ? { url: normalizedUrl }
+      : { text: news };
     setLoading(true);
     setError("");
     setResult(null);
@@ -183,7 +195,13 @@ const payload = isUrl
           setAuthOpen(true);
           return;
         }
-        setError("حدث خطأ أثناء التحقق من الخبر.");
+        const detail =
+          typeof data.detail === "string"
+            ? data.detail
+            : typeof data.message === "string"
+            ? data.message
+            : "";
+        setError(detail || "حدث خطأ أثناء التحقق من الخبر.");
         return;
       }
 
@@ -299,6 +317,14 @@ const payload = isUrl
   function readResultAloud() {
     if (!result) return;
 
+    const resultSection = document.querySelector(".factroot-result");
+    const completeResultText = resultSection?.textContent?.replace(/\\s+/g, " ").trim();
+
+    if (completeResultText) {
+      speakText(`نتيجة التحقق. ${completeResultText}`);
+      return;
+    }
+
     const statusText = hasStrongMatch
       ? "تم العثور على مصدر حكومي مطابق للخبر."
       : "لم يتم العثور على تطابق حكومي قوي.";
@@ -307,7 +333,17 @@ const payload = isUrl
       ? `الحساب الرسمي ${result.best_match.account}. درجة التطابق ${result.best_match.match_score} بالمئة. نص المنشور: ${result.best_match.text}`
       : "لم يتم العثور على منشور حكومي مطابق لهذا الخبر حاليًا.";
 
-    speakText(`${statusText} ${bestMatchText}`);
+    const urlText = result.url_safety
+      ? `فحص أمان الرابط. النتيجة ${result.url_safety.score} بالمئة. ${result.url_safety.message}`
+      : "";
+
+    speakText(`${statusText} ${bestMatchText} ${urlText}`);
+  }
+
+  function readPageAloud() {
+    const mainContent = document.querySelector(".factroot-home");
+    const pageText = mainContent?.textContent?.replace(/\\s+/g, " ").trim();
+    if (pageText) speakText(pageText);
   }
 
   useEffect(() => {
@@ -985,8 +1021,8 @@ const payload = isUrl
     }}
     placeholder={
   language === "ar"
-    ? "📰 الصق الخبر الذي تريد التحقق منه هنا..."
-    : "📰 Paste the news you want to verify here..."
+    ? "ألصق الخبر أو الرابط الذي تريد التحقق منه هنا"
+    : "Paste the news or link you want to verify here"
 }
     value={news}
     onChange={(e) => setNews(e.target.value)}
@@ -1004,6 +1040,7 @@ const payload = isUrl
   >
     <ImageNewsInput
       disabled={loading || isListening}
+      language={language}
       onBusy={setImageReading}
       onText={(text: string) => {
         setNews(text);
@@ -1119,10 +1156,39 @@ const payload = isUrl
           style={{
             display: "flex",
             justifyContent: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            marginTop: 18,
+          }}
+        >
+          <button
+            type="button"
+            onClick={isSpeaking ? stopSpeaking : readPageAloud}
+            aria-label={isSpeaking ? "إيقاف القراءة الصوتية" : "قراءة نصوص الصفحة بصوت مسموع"}
+            style={{
+              padding: "10px 16px",
+              border: "1px solid #C7D2FE",
+              borderRadius: 11,
+              background: "#F5F3FF",
+              color: "#5B21B6",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {isSpeaking ? "⏹️ إيقاف القراءة" : "🔊 قراءة الصفحة"}
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
             marginTop: 25,
           }}
         >
           <button
+            type="button"
+            aria-label={guestLimitReached ? "تسجيل الدخول للمتابعة" : loading ? "جار التحقق" : "تحقق من الخبر أو الرابط"}
             onClick={guestLimitReached ? () => setAuthOpen(true) : checkNews}
             disabled={loading || imageReading}
             style={{
@@ -1197,6 +1263,25 @@ const payload = isUrl
             نتيجة التحقق
           </h2>
 
+          {result.url_safety && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: 18, marginBottom: 18, borderRadius: 12,
+                border: `1px solid ${result.url_safety.verdict === "unsafe" ? "#FCA5A5" : "#BFDBFE"}`,
+                background: result.url_safety.verdict === "unsafe" ? "#FEF2F2" : "#EFF6FF",
+                color: result.url_safety.verdict === "unsafe" ? "#991B1B" : "#1E3A8A",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>فحص أمان الرابط</h3>
+              <p><strong>الرابط:</strong> <a href={result.news} target="_blank" rel="noopener noreferrer">{result.news}</a></p>
+              <p><strong>نسبة الأمان التقديرية:</strong> {result.url_safety.score}%</p>
+              <p>{result.url_safety.message}</p>
+              <p style={{ fontSize: 13 }}>مهم: النسبة لا تضمن سلامة الرابط. لا تدخل كلمات المرور أو البيانات الشخصية في مواقع غير موثوقة.</p>
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
             <button
               type="button"
@@ -1216,6 +1301,8 @@ const payload = isUrl
             </button>
           </div>
 
+          {!result.url_safety && (
+            <>
           {/* الحالة */}
 
           <div
@@ -1437,6 +1524,8 @@ const payload = isUrl
                   )
               )}
             </div>
+          )}
+            </>
           )}
         </section>
       )}
