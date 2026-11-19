@@ -76,8 +76,8 @@ export default function AccountPage() {
           {user && <p style={{ margin: 0, color: "#64748B" }}>مرحبًا {user.name}، هنا آخر الأخبار التي تحققتِ منها.</p>}
         </div>
 
-        {loading && <div style={{ textAlign: "center", color: "#64748B", padding: 40 }}>جاري تحميل السجل...</div>}
-        {error && <div style={{ padding: 18, borderRadius: 12, background: "#FEF2F2", color: "#B91C1C", textAlign: "center" }}>{error}</div>}
+        {loading && <div role="status" aria-live="polite" style={{ textAlign: "center", color: "#64748B", padding: 40 }}>جاري تحميل السجل...</div>}
+        {error && <div role="alert" style={{ padding: 18, borderRadius: 12, background: "#FEF2F2", color: "#B91C1C", textAlign: "center" }}>{error}</div>}
         {!loading && !error && history.length === 0 && (
           <div style={{ padding: 45, borderRadius: 18, background: "#FFFFFF", color: "#64748B", textAlign: "center", boxShadow: "0 8px 24px rgba(15,23,42,.06)" }}>
             لا توجد عمليات تحقق محفوظة حتى الآن.

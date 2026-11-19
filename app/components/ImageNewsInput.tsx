@@ -59,13 +59,21 @@ export default function ImageNewsInput({
     setError("");
 
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setError("اختر صورة PNG أو JPG أو WEBP.");
+      setError(
+        language === "ar"
+          ? "اختر صورة PNG أو JPG أو WEBP."
+          : "Choose a PNG, JPG, or WEBP image."
+      );
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      setError("حجم الصورة يجب ألا يتجاوز 10 ميجابايت.");
+      setError(
+        language === "ar"
+          ? "حجم الصورة يجب ألا يتجاوز 10 ميجابايت."
+          : "The image must be no larger than 10 MB."
+      );
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -75,7 +83,11 @@ export default function ImageNewsInput({
     setBusy(true);
     onBusy(true);
     setProgress(0);
-    setMessage("جاري تحميل قارئ الصور...");
+    setMessage(
+      language === "ar"
+        ? "جاري تحميل قارئ الصور..."
+        : "Loading the image reader..."
+    );
 
     if (imageUrl.current) URL.revokeObjectURL(imageUrl.current);
 
@@ -129,7 +141,11 @@ export default function ImageNewsInput({
           if (currentJob !== job.current) return;
 
           if (event.status === "recognizing text") {
-            setMessage("جاري قراءة النص من الصورة...");
+            setMessage(
+              language === "ar"
+                ? "جاري قراءة النص من الصورة..."
+                : "Reading text from the image..."
+            );
             setProgress(Math.round(event.progress * 100));
           }
         },
@@ -147,20 +163,32 @@ export default function ImageNewsInput({
 
       if (!text || !/[\p{L}\p{N}]/u.test(text)) {
         setMessage("");
-        setError("لم أجد نصًا واضحًا. جرّب صورة أوضح.");
+        setError(
+          language === "ar"
+            ? "لم أجد نصًا واضحًا. جرّب صورة أوضح."
+            : "No clear text was found. Try a clearer image."
+        );
         return;
       }
 
       onText(text);
       setProgress(100);
-      setMessage("تم استخراج النص. راجعه ثم اضغط «تحقق الآن».");
+      setMessage(
+        language === "ar"
+          ? "تم استخراج النص. راجعه ثم اضغط «تحقق الآن»."
+          : "Text extracted. Review it, then select Verify Now."
+      );
     } catch (cause) {
       if (currentJob === job.current) {
         setMessage("");
         setError(
           cause instanceof Error && cause.message === "large-image"
-            ? "أبعاد الصورة كبيرة جدًا. اختر صورة أصغر."
-            : "تعذرت قراءة الصورة. تأكد من الإنترنت وجرّب صورة واضحة."
+            ? language === "ar"
+              ? "أبعاد الصورة كبيرة جدًا. اختر صورة أصغر."
+              : "The image dimensions are too large. Choose a smaller image."
+            : language === "ar"
+              ? "تعذرت قراءة الصورة. تأكد من الإنترنت وجرّب صورة واضحة."
+              : "The image could not be read. Check your connection and try a clear image."
         );
       }
     } finally {
@@ -245,6 +273,7 @@ export default function ImageNewsInput({
 
       {(preview || message || error) && (
         <div
+          dir={language === "ar" ? "rtl" : "ltr"}
           style={{
             position: "absolute",
             bottom: 68,
@@ -260,14 +289,14 @@ export default function ImageNewsInput({
             color: "#1E3A8A",
             fontSize: 13,
             lineHeight: 1.7,
-            direction: "rtl",
+            direction: language === "ar" ? "rtl" : "ltr",
           }}
         >
           {preview && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={preview}
-              alt="معاينة صورة الخبر"
+              alt={language === "ar" ? "معاينة صورة الخبر" : "News image preview"}
               style={{
                 width: "100%",
                 maxHeight: 100,
@@ -281,7 +310,11 @@ export default function ImageNewsInput({
             <progress
               value={progress}
               max={100}
-              aria-label="تقدم قراءة الصورة"
+              aria-label={
+                language === "ar"
+                  ? `تقدم قراءة الصورة ${progress} بالمئة`
+                  : `Image reading progress ${progress} percent`
+              }
               style={{ width: "100%", marginTop: 8 }}
             />
           )}
@@ -309,7 +342,13 @@ export default function ImageNewsInput({
               cursor: "pointer",
             }}
           >
-            {busy ? "إلغاء القراءة" : "إغلاق المعاينة"}
+            {language === "ar"
+              ? busy
+                ? "إلغاء القراءة"
+                : "إغلاق المعاينة"
+              : busy
+                ? "Cancel Reading"
+                : "Close Preview"}
           </button>
         </div>
       )}

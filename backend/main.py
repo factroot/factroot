@@ -96,7 +96,12 @@ class URLCheck(BaseModel):
 
 
 @app.post("/check-url")
-def check_url_safety(request: URLCheck):
+def check_url_safety(
+    request: URLCheck,
+    response: Response,
+    factroot_session: str | None = Cookie(default=None),
+    factroot_guest: str | None = Cookie(default=None),
+):
     from urllib.parse import urlparse
     import ipaddress
     import socket
@@ -106,6 +111,38 @@ def check_url_safety(request: URLCheck):
 
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise HTTPException(status_code=400, detail="أدخل رابطًا صحيحًا يبدأ بـ http أو https.")
+    current_user = find_user_by_session(factroot_session)
+    guest_hash = None
+
+    if not current_user:
+        guest_token = factroot_guest or secrets.token_urlsafe(32)
+        guest_hash = hashlib.sha256(guest_token.encode("utf-8")).hexdigest()
+
+        with get_connection() as connection:
+            guest_attempts = connection.execute(
+                "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
+                (guest_hash,),
+            ).fetchone()[0]
+
+        if guest_attempts >= 3:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "guest_limit_reached",
+                    "message": "استخدمت محاولات الزائر الثلاث. سجّل الدخول للمتابعة.",
+                },
+            )
+
+        if not factroot_guest:
+            response.set_cookie(
+                key="factroot_guest",
+                value=guest_token,
+                max_age=365 * 24 * 60 * 60,
+                httponly=True,
+                samesite="lax",
+                secure=False,
+                path="/",
+            )
 
     # منع الروابط المحلية والخاصة قبل إرسالها لخدمة الفحص
     hostname = parsed.hostname.lower()
@@ -183,11 +220,48 @@ def check_url_safety(request: URLCheck):
         }
         status_text = "لم يتم العثور على تهديد معروف للرابط"
 
-    return {
-        "status": status_text, "news": raw_url, "keywords": [],
-        "accounts_checked": [], "best_match": None, "results": [],
-        "url_safety": safety
+    payload = {
+        "status": status_text,
+        "news": raw_url,
+        "keywords": [],
+        "accounts_checked": [],
+        "best_match": None,
+        "results": [],
+        "url_safety": safety,
     }
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO verification_history (
+                user_id, guest_hash, news_text, result_status,
+                best_match_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                current_user["id"] if current_user else None,
+                guest_hash,
+                raw_url,
+                status_text,
+                None,
+                int(time.time()),
+            ),
+        )
+
+        if not current_user:
+            used_attempts = connection.execute(
+                "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
+                (guest_hash,),
+            ).fetchone()[0]
+
+            payload["guest_usage"] = {
+                "used": used_attempts,
+                "limit": 3,
+                "remaining": max(0, 3 - used_attempts),
+            }
+
+    return payload
 
 
 
