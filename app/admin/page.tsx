@@ -240,8 +240,8 @@ export default function AdminPage() {
           <p style={{ margin: 0, color: "#64748B" }}>إحصائيات المستخدمين وعمليات التحقق في FactRoot.</p>
         </section>
 
-        {loading && <div style={{ textAlign: "center", padding: 45, color: "#64748B" }}>جاري تحميل لوحة الإدارة...</div>}
-        {error && <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: "#FEF2F2", color: "#B91C1C", textAlign: "center" }}>{error}</div>}
+        {loading && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 45, color: "#64748B" }}>جاري تحميل لوحة الإدارة...</div>}
+        {error && <div role="alert" style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: "#FEF2F2", color: "#B91C1C", textAlign: "center" }}>{error}</div>}
 
         {stats && (
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16, marginBottom: 28 }}>
@@ -266,10 +266,11 @@ export default function AdminPage() {
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                <caption className="factroot-visually-hidden">قائمة مستخدمي FactRoot وحالة كل حساب</caption>
                 <thead style={{ background: "#F8FAFC" }}>
                   <tr>
                     {['الاسم', 'البريد الإلكتروني', 'النوع', 'تاريخ التسجيل', 'الحالة', 'الإجراء'].map((heading) => (
-                      <th key={heading} style={{ padding: 14, textAlign: "right", color: "#475569", fontSize: 14 }}>{heading}</th>
+                      <th scope="col" key={heading} style={{ padding: 14, textAlign: "right", color: "#475569", fontSize: 14 }}>{heading}</th>
                     ))}
                   </tr>
                 </thead>
@@ -288,8 +289,10 @@ export default function AdminPage() {
                       <td style={{ padding: 14 }}>
                         {user.role === "user" ? (
                           <button
+                            type="button"
                             onClick={() => changeStatus(user)}
                             disabled={updatingId === user.id}
+                            aria-label={`${user.is_active ? "إيقاف" : "تفعيل"} حساب ${user.name}`}
                             style={{ padding: "7px 11px", border: `1px solid ${user.is_active ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, background: "#FFFFFF", color: user.is_active ? "#DC2626" : "#16A34A", fontWeight: 700, cursor: updatingId === user.id ? "wait" : "pointer" }}
                           >
                             {updatingId === user.id ? "جاري..." : user.is_active ? "إيقاف" : "تفعيل"}
@@ -312,9 +315,9 @@ export default function AdminPage() {
             <p style={{ margin: "0 0 20px", color: "#64748B" }}>حسابات X الرسمية التي يستخدمها الموقع للتحقق.</p>
 
             <form onSubmit={addSource} style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) minmax(180px,1fr) auto", gap: 10, marginBottom: 20 }}>
-              <input value={sourceLabel} onChange={(event) => setSourceLabel(event.target.value)} required placeholder="اسم الجهة" style={{ padding: 12, border: "1px solid #CBD5E1", borderRadius: 10, fontSize: 15 }} />
-              <input value={sourceAccount} onChange={(event) => setSourceAccount(event.target.value)} required placeholder="حساب X مثل DgaGovSa" dir="ltr" style={{ padding: 12, border: "1px solid #CBD5E1", borderRadius: 10, fontSize: 15 }} />
-              <button disabled={addingSource} style={{ padding: "10px 18px", border: 0, borderRadius: 10, background: "#2563EB", color: "#FFFFFF", fontWeight: 800, cursor: addingSource ? "wait" : "pointer" }}>
+              <input aria-label="اسم الجهة الموثوقة" value={sourceLabel} onChange={(event) => setSourceLabel(event.target.value)} required placeholder="اسم الجهة" style={{ padding: 12, border: "1px solid #CBD5E1", borderRadius: 10, fontSize: 15 }} />
+              <input aria-label="اسم حساب الجهة على X" value={sourceAccount} onChange={(event) => setSourceAccount(event.target.value)} required placeholder="حساب X مثل DgaGovSa" dir="ltr" style={{ padding: 12, border: "1px solid #CBD5E1", borderRadius: 10, fontSize: 15 }} />
+              <button type="submit" disabled={addingSource} style={{ padding: "10px 18px", border: 0, borderRadius: 10, background: "#2563EB", color: "#FFFFFF", fontWeight: 800, cursor: addingSource ? "wait" : "pointer" }}>
                 {addingSource ? "جاري..." : "إضافة مصدر"}
               </button>
             </form>
@@ -327,8 +330,10 @@ export default function AdminPage() {
                     <span dir="ltr" style={{ color: "#2563EB" }}>@{source.account}</span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => toggleSource(source)}
                     disabled={updatingId === source.id}
+                    aria-label={`${source.is_active ? "تعطيل" : "تفعيل"} المصدر ${source.label}`}
                     style={{ padding: "7px 12px", border: `1px solid ${source.is_active ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, background: "#FFFFFF", color: source.is_active ? "#DC2626" : "#16A34A", fontWeight: 700, cursor: "pointer" }}
                   >
                     {source.is_active ? "تعطيل" : "تفعيل"}
@@ -348,10 +353,11 @@ export default function AdminPage() {
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
+                  <caption className="factroot-visually-hidden">آخر عمليات التحقق دون عرض نصوص الأخبار</caption>
                   <thead style={{ background: "#F8FAFC" }}>
                     <tr>
                       {['المنفذ', 'النتيجة', 'أفضل تطابق', 'التاريخ'].map((heading) => (
-                        <th key={heading} style={{ padding: 12, textAlign: "right", color: "#475569" }}>{heading}</th>
+                        <th scope="col" key={heading} style={{ padding: 12, textAlign: "right", color: "#475569" }}>{heading}</th>
                       ))}
                     </tr>
                   </thead>

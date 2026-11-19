@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ImageNewsInput from "./components/ImageNewsInput";
 import AuthModal, { AuthUser } from "./components/AuthModal";
@@ -151,6 +151,9 @@ export default function Home() {
   const [voiceStatus, setVoiceStatus] = useState("");
   const [speechSupported, setSpeechSupported] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const resultRef = useRef<HTMLElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   async function checkNews() {
     if (!news.trim()) {
@@ -232,18 +235,26 @@ export default function Home() {
 
     if (!Recognition) {
       setSpeechSupported(false);
-      setVoiceStatus("ميزة تحويل الصوت إلى نص غير مدعومة في هذا المتصفح. جرّب Chrome أو Edge.");
+      setVoiceStatus(
+        language === "ar"
+          ? "ميزة تحويل الصوت إلى نص غير مدعومة في هذا المتصفح. جرّب Chrome أو Edge."
+          : "Speech input is not supported in this browser. Try Chrome or Edge."
+      );
       return;
     }
 
     const recognition = new Recognition();
-    recognition.lang = "ar-SA";
+    recognition.lang = language === "ar" ? "ar-SA" : "en-US";
     recognition.continuous = false;
     recognition.interimResults = false;
 
     recognition.onstart = () => {
       setIsListening(true);
-      setVoiceStatus("الميكروفون يعمل الآن. ابدأ بالتحدث.");
+      setVoiceStatus(
+        language === "ar"
+          ? "الميكروفون يعمل الآن. ابدأ بالتحدث."
+          : "The microphone is listening. Start speaking."
+      );
       setError("");
     };
 
@@ -264,11 +275,23 @@ export default function Home() {
     recognition.onerror = (event) => {
       setIsListening(false);
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setVoiceStatus("لم يتم السماح باستخدام الميكروفون. اسمح للموقع بالوصول إلى الميكروفون ثم حاول مرة أخرى.");
+        setVoiceStatus(
+          language === "ar"
+            ? "لم يتم السماح باستخدام الميكروفون. اسمح للموقع بالوصول إلى الميكروفون ثم حاول مرة أخرى."
+            : "Microphone access was not allowed. Allow access, then try again."
+        );
       } else if (event.error === "no-speech") {
-        setVoiceStatus("لم أسمع كلامًا واضحًا. حاول مرة أخرى وتحدث بالقرب من الميكروفون.");
+        setVoiceStatus(
+          language === "ar"
+            ? "لم أسمع كلامًا واضحًا. حاول مرة أخرى وتحدث بالقرب من الميكروفون."
+            : "No clear speech was detected. Try again and speak near the microphone."
+        );
       } else {
-        setVoiceStatus("تعذر تحويل الصوت إلى نص. حاول مرة أخرى.");
+        setVoiceStatus(
+          language === "ar"
+            ? "تعذر تحويل الصوت إلى نص. حاول مرة أخرى."
+            : "Speech could not be converted to text. Please try again."
+        );
       }
     };
 
@@ -281,27 +304,39 @@ export default function Home() {
 
   function speakText(text: string) {
     if (!("speechSynthesis" in window)) {
-      setVoiceStatus("ميزة قراءة النص غير مدعومة في هذا المتصفح.");
+      setVoiceStatus(
+        language === "ar"
+          ? "ميزة قراءة النص غير مدعومة في هذا المتصفح."
+          : "Text-to-speech is not supported in this browser."
+      );
       return;
     }
 
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ar-SA";
-    utterance.rate = 0.95;
+    utterance.lang = language === "ar" ? "ar-SA" : "en-US";
+    utterance.rate = language === "ar" ? 1.03 : 0.95;
+    utterance.pitch = 1;
 
-    const arabicVoice = window.speechSynthesis
-      .getVoices()
-      .find((voice) => voice.lang.toLowerCase().startsWith("ar"));
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice =
+      voices.find((voice) => voice.lang.toLowerCase() === utterance.lang.toLowerCase()) ||
+      voices.find((voice) =>
+        voice.lang.toLowerCase().startsWith(language === "ar" ? "ar" : "en")
+      );
 
-    if (arabicVoice) utterance.voice = arabicVoice;
+    if (matchingVoice) utterance.voice = matchingVoice;
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => {
       setIsSpeaking(false);
-      setVoiceStatus("تعذر تشغيل القراءة الصوتية.");
+      setVoiceStatus(
+        language === "ar"
+          ? "تعذر تشغيل القراءة الصوتية."
+          : "The page could not be read aloud. Please try again."
+      );
     };
 
     window.speechSynthesis.speak(utterance);
@@ -317,14 +352,35 @@ export default function Home() {
   function readResultAloud() {
     if (!result) return;
 
-    const resultSection = document.querySelector(".factroot-result");
-    const completeResultText = resultSection?.textContent?.replace(/\\s+/g, " ").trim();
+    if (language === "en") {
+      if (result.url_safety) {
+  const linkResult =
+    result.url_safety.verdict === "unsafe"
+      ? "A known threat was detected. This link is dangerous. Do not open it."
+      : "No known threat was found. However, this does not guarantee that the link is one hundred percent safe.";
 
-    if (completeResultText) {
-      speakText(`نتيجة التحقق. ${completeResultText}`);
+  speakText(`Verification result. ${linkResult}`);
+  return;
+}
+
+      const statusText = hasStrongMatch
+        ? "A strong match was found in an official government source."
+        : "No strong match was found in the official government sources.";
+      const matchText = result.best_match
+        ? `The official account is ${result.best_match.account}. The match score is ${result.best_match.match_score} percent.`
+        : "No matching official post is currently available.";
+      speakText(`Verification result. ${statusText} ${matchText}`);
       return;
     }
+   if (result.url_safety) {
+  const linkResult =
+    result.url_safety.verdict === "unsafe"
+      ? "تَمَّ اكتِشافُ تَهْديدٍ مَعْروف. الرَّابِطُ خَطِر. لا تَفْتَحْه."
+      : "لَمْ يَتِمَّ العُثورُ عَلى تَهْديدٍ مَعْروف. وَلَكِنْ، هَذا لا يَضْمَنُ سَلامَةَ الرَّابِط مِئَةً بِالمِئَة.";
 
+  speakText(`نَتيجَةُ التَّحَقُّق. ${linkResult}`);
+  return;
+}
     const statusText = hasStrongMatch
       ? "تم العثور على مصدر حكومي مطابق للخبر."
       : "لم يتم العثور على تطابق حكومي قوي.";
@@ -333,17 +389,21 @@ export default function Home() {
       ? `الحساب الرسمي ${result.best_match.account}. درجة التطابق ${result.best_match.match_score} بالمئة. نص المنشور: ${result.best_match.text}`
       : "لم يتم العثور على منشور حكومي مطابق لهذا الخبر حاليًا.";
 
-    const urlText = result.url_safety
-      ? `فحص أمان الرابط. النتيجة ${result.url_safety.score} بالمئة. ${result.url_safety.message}`
-      : "";
-
-    speakText(`${statusText} ${bestMatchText} ${urlText}`);
+    speakText(`نتيجة التحقق. ${statusText} ${bestMatchText}`);
   }
 
   function readPageAloud() {
-    const mainContent = document.querySelector(".factroot-home");
-    const pageText = mainContent?.textContent?.replace(/\\s+/g, " ").trim();
-    if (pageText) speakText(pageText);
+    setVoiceStatus("");
+    if (language === "ar") {
+      speakText(
+        "أهلًا بك في منصة جذر الحقيقة. هذه منصة للتحقق من الأخبار. يمكنك إدخال الخبر بالكتابة، أو بالصوت، أو من صورة. بعد إدخال الخبر، اختر زر تحقق الآن. ستعرض المنصة نتيجة التحقق، وأي مصدر رسمي مرتبط بالخبر."
+      );
+      return;
+    }
+
+    speakText(
+      "Welcome to FactRoot. This platform helps you verify news using trusted official sources. You can type the news, enter it by voice, or extract it from an image, then select Verify Now. The website will display the verification result and any related official sources."
+    );
   }
 
   useEffect(() => {
@@ -405,10 +465,29 @@ export default function Home() {
 
   const guestLimitReached = !currentUser && guestUsage?.remaining === 0;
 
+  useEffect(() => {
+    if (result) resultRef.current?.focus();
+  }, [result]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    accountMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const closeMenu = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setAccountMenuOpen(false);
+      accountButtonRef.current?.focus();
+    };
+    window.addEventListener("keydown", closeMenu);
+    return () => window.removeEventListener("keydown", closeMenu);
+  }, [accountMenuOpen]);
+
   return (
     <main
-  className="factroot-home"
-  dir={language === "ar" ? "rtl" : "ltr"}
+      id="main-content"
+      tabIndex={-1}
+      className="factroot-home"
+      lang={language}
+      dir={language === "ar" ? "rtl" : "ltr"}
       style={{
         minHeight: "100vh",
         background: `
@@ -431,9 +510,12 @@ export default function Home() {
         padding: "50px 20px",
         fontFamily: "Arial, sans-serif",
         position: "relative",
-        overflow: "hidden",
+        overflowX: "clip",
       }}
     >
+      <a className="factroot-skip-link" href="#news-input">
+        {language === "ar" ? "تجاوز إلى إدخال الخبر" : "Skip to news input"}
+      </a>
  {/* دائرة كبيرة يسار */}
 <div
   style={{
@@ -786,28 +868,53 @@ export default function Home() {
   </div>
 </div>
 
-          <span
-            style={{ cursor: "pointer" }}
+          <button
+            type="button"
+            style={{
+              cursor: "pointer",
+              border: "none",
+              background: "transparent",
+              color: "inherit",
+              font: "inherit",
+              padding: 4,
+            }}
             onClick={() =>
               scrollToSection("how-it-works")
             }
           >
            {language === "ar" ? "كيف يعمل؟" : "How It Works?"}
-          </span>
+          </button>
 
-          <span
-            style={{ cursor: "pointer" }}
+          <button
+            type="button"
+            style={{
+              cursor: "pointer",
+              border: "none",
+              background: "transparent",
+              color: "inherit",
+              font: "inherit",
+              padding: 4,
+            }}
             onClick={() =>
               scrollToSection("about")
             }
           >
            {language === "ar" ? "من نحن" : "About Us"}
-          </span>
+          </button>
           {currentUser ? (
             <div style={{ position: "relative" }}>
               <button
+                ref={accountButtonRef}
                 type="button"
                 onClick={() => setAccountMenuOpen((open) => !open)}
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="menu"
+                aria-controls="account-menu"
+                aria-label={
+                  language === "ar"
+                    ? `فتح قائمة حساب ${currentUser.name}`
+                    : `Open ${currentUser.name}'s account menu`
+                }
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -824,6 +931,7 @@ export default function Home() {
                 }}
               >
                 <span
+                  aria-hidden="true"
                   style={{
                     display: "grid",
                     placeItems: "center",
@@ -838,11 +946,15 @@ export default function Home() {
                   {currentUser.name.trim().charAt(0).toUpperCase()}
                 </span>
                 <span>{currentUser.name}</span>
-                <span style={{ color: "#FFFFFF", fontSize: 11 }}>⌄</span>
+                <span aria-hidden="true" style={{ color: "#FFFFFF", fontSize: 11 }}>⌄</span>
               </button>
 
               {accountMenuOpen && (
                 <div
+                  ref={accountMenuRef}
+                  id="account-menu"
+                  role="menu"
+                  aria-label={language === "ar" ? "قائمة الحساب" : "Account menu"}
                   style={{
                     position: "absolute",
                     top: "calc(100% + 10px)",
@@ -866,6 +978,7 @@ export default function Home() {
                   </div>
                   <Link
                     href="/account"
+                    role="menuitem"
                     style={{
                       display: "block",
                       marginTop: 8,
@@ -876,11 +989,12 @@ export default function Home() {
                       fontWeight: 700,
                     }}
                   >
-                    السجل
+                    {language === "ar" ? "السجل" : "History"}
                   </Link>
                   {currentUser.role === "admin" && (
                     <Link
                       href="/admin"
+                      role="menuitem"
                       style={{
                         display: "block",
                         padding: "10px 12px",
@@ -890,12 +1004,13 @@ export default function Home() {
                         fontWeight: 700,
                       }}
                     >
-                      لوحة الإدارة
+                      {language === "ar" ? "لوحة الإدارة" : "Admin Dashboard"}
                     </Link>
                   )}
                   <button
                     type="button"
                     onClick={logout}
+                    role="menuitem"
                     style={{
                       width: "100%",
                       marginTop: 8,
@@ -909,7 +1024,7 @@ export default function Home() {
                       cursor: "pointer",
                     }}
                   >
-                    تسجيل الخروج
+                    {language === "ar" ? "تسجيل الخروج" : "Log Out"}
                   </button>
                 </div>
               )}
@@ -977,6 +1092,7 @@ export default function Home() {
 
       <AuthModal
         isOpen={authOpen}
+        language={language}
         onClose={() => setAuthOpen(false)}
         onAuthenticated={setCurrentUser}
       />
@@ -1000,10 +1116,15 @@ export default function Home() {
         }}
       >
         <div style={{ position: "relative" }}>
+  <label className="factroot-visually-hidden" htmlFor="news-input">
+    {language === "ar"
+      ? "الخبر أو الرابط المراد التحقق منه"
+      : "News or link to verify"}
+  </label>
   <textarea
+    id="news-input"
     disabled={imageReading}
     rows={4}
-    aria-label="نص الخبر المراد التحقق منه"
     aria-describedby="voice-status"
     style={{
       width: "100%",
@@ -1164,7 +1285,20 @@ export default function Home() {
           <button
             type="button"
             onClick={isSpeaking ? stopSpeaking : readPageAloud}
-            aria-label={isSpeaking ? "إيقاف القراءة الصوتية" : "قراءة نصوص الصفحة بصوت مسموع"}
+            aria-label={
+              language === "ar"
+                ? isSpeaking
+                  ? "إيقاف القراءة الصوتية"
+                  : "قراءة محتوى الصفحة بصوت واضح"
+                : isSpeaking
+                  ? "Stop reading the page"
+                  : "Read the page aloud"
+            }
+            title={
+              language === "ar"
+                ? "استمع إلى شرح مختصر وواضح للصفحة"
+                : "Listen to a clear overview of the page"
+            }
             style={{
               padding: "10px 16px",
               border: "1px solid #C7D2FE",
@@ -1175,7 +1309,13 @@ export default function Home() {
               cursor: "pointer",
             }}
           >
-            {isSpeaking ? "⏹️ إيقاف القراءة" : "🔊 قراءة الصفحة"}
+            {language === "ar"
+              ? isSpeaking
+                ? "⏹️ إيقاف القراءة"
+                : "🔊 استمع لشرح الصفحة"
+              : isSpeaking
+                ? "⏹️ Stop Reading"
+                : "🔊 Listen to Page Guide"}
           </button>
         </div>
 
@@ -1188,7 +1328,19 @@ export default function Home() {
         >
           <button
             type="button"
-            aria-label={guestLimitReached ? "تسجيل الدخول للمتابعة" : loading ? "جار التحقق" : "تحقق من الخبر أو الرابط"}
+            aria-label={
+              language === "ar"
+                ? guestLimitReached
+                  ? "تسجيل الدخول للمتابعة"
+                  : loading
+                    ? "جار التحقق"
+                    : "تحقق من الخبر أو الرابط"
+                : guestLimitReached
+                  ? "Sign in to continue"
+                  : loading
+                    ? "Verification in progress"
+                    : "Verify the news or link"
+            }
             onClick={guestLimitReached ? () => setAuthOpen(true) : checkNews}
             disabled={loading || imageReading}
             style={{
@@ -1211,7 +1363,7 @@ export default function Home() {
             }}
           >
            {guestLimitReached
-  ? "سجّل الدخول للمتابعة"
+  ? language === "ar" ? "سجّل الدخول للمتابعة" : "Sign In to Continue"
   : loading
   ? "⏳ جاري التحقق..."
   : language === "ar"
@@ -1233,8 +1385,12 @@ export default function Home() {
             }}
           >
             {guestUsage.remaining > 0
-              ? `تبقّى لك ${guestUsage.remaining} من أصل ${guestUsage.limit} محاولات كزائر.`
-              : "انتهت محاولات الزائر. سجّلي الدخول للمتابعة بلا حد."}
+              ? language === "ar"
+                ? `تبقّى لك ${guestUsage.remaining} من أصل ${guestUsage.limit} محاولات كزائر.`
+                : `${guestUsage.remaining} of ${guestUsage.limit} guest attempts remaining.`
+              : language === "ar"
+                ? "انتهت محاولات الزائر. سجّلي الدخول للمتابعة بلا حد."
+                : "Your guest attempts have ended. Sign in to continue without this limit."}
           </div>
         )}
 
@@ -1244,6 +1400,8 @@ export default function Home() {
 
       {result && (
         <section
+          ref={resultRef}
+          tabIndex={-1}
           className="factroot-result"
           aria-live="polite"
           style={{
@@ -1260,7 +1418,7 @@ export default function Home() {
               color: "#14213D",
             }}
           >
-            نتيجة التحقق
+            {language === "ar" ? "نتيجة التحقق" : "Verification Result"}
           </h2>
 
           {result.url_safety && (
@@ -1274,11 +1432,43 @@ export default function Home() {
                 color: result.url_safety.verdict === "unsafe" ? "#991B1B" : "#1E3A8A",
               }}
             >
-              <h3 style={{ marginTop: 0 }}>فحص أمان الرابط</h3>
-              <p><strong>الرابط:</strong> <a href={result.news} target="_blank" rel="noopener noreferrer">{result.news}</a></p>
-              <p><strong>نسبة الأمان التقديرية:</strong> {result.url_safety.score}%</p>
-              <p>{result.url_safety.message}</p>
-              <p style={{ fontSize: 13 }}>مهم: النسبة لا تضمن سلامة الرابط. لا تدخل كلمات المرور أو البيانات الشخصية في مواقع غير موثوقة.</p>
+              <h3 style={{ marginTop: 0 }}>
+  {language === "ar" ? "فحص أمان الرابط" : "Link Safety Check"}
+</h3>
+
+<p>
+  <strong>{language === "ar" ? "الرابط:" : "Link:"}</strong>{" "}
+  <span style={{ overflowWrap: "anywhere" }}>
+    {result.news}
+  </span>
+</p>
+
+<p>
+  <strong>{language === "ar" ? "النتيجة:" : "Result:"}</strong>{" "}
+  {result.url_safety.verdict === "unsafe"
+    ? language === "ar"
+      ? "تم اكتشاف تهديد معروف"
+      : "A known threat was detected"
+    : language === "ar"
+      ? "لم يتم العثور على تهديد معروف"
+      : "No known threat was found"}
+</p>
+
+<p>
+  {result.url_safety.verdict === "unsafe"
+    ? language === "ar"
+      ? "تحذير: الرابط خطر أو مضلل. تجنب فتحه."
+      : "Warning: The link is dangerous or deceptive. Avoid opening it."
+    : language === "ar"
+      ? "لم يتم العثور على تهديد معروف، ولكن هذا لا يضمن سلامة الرابط مئة بالمئة."
+      : "No known threat was found, but this does not guarantee that the link is one hundred percent safe."}
+</p>
+
+<p style={{ fontSize: 13 }}>
+  {language === "ar"
+    ? "مهم: لا تدخل كلمات المرور أو البيانات الشخصية في مواقع غير موثوقة."
+    : "Important: Do not enter passwords or personal information on untrusted websites."}
+</p>
             </div>
           )}
 
@@ -1286,7 +1476,15 @@ export default function Home() {
             <button
               type="button"
               onClick={isSpeaking ? stopSpeaking : readResultAloud}
-              aria-label={isSpeaking ? "إيقاف قراءة نتيجة التحقق" : "قراءة نتيجة التحقق بصوت عال"}
+              aria-label={
+                language === "ar"
+                  ? isSpeaking
+                    ? "إيقاف قراءة نتيجة التحقق"
+                    : "قراءة نتيجة التحقق بصوت عال"
+                  : isSpeaking
+                    ? "Stop reading the result"
+                    : "Read the verification result aloud"
+              }
               style={{
                 padding: "10px 16px",
                 border: "1px solid #C7D2FE",
@@ -1297,7 +1495,13 @@ export default function Home() {
                 cursor: "pointer",
               }}
             >
-              {isSpeaking ? "⏹️ إيقاف القراءة" : "🔊 قراءة النتيجة"}
+              {language === "ar"
+                ? isSpeaking
+                  ? "⏹️ إيقاف القراءة"
+                  : "🔊 قراءة النتيجة"
+                : isSpeaking
+                  ? "⏹️ Stop Reading"
+                  : "🔊 Read Result"}
             </button>
           </div>
 
@@ -1568,6 +1772,7 @@ export default function Home() {
   </div>
 
   <h2
+  aria-label={language === "ar" ? "لماذا فاكت روت؟" : "Why FactRoot?"}
     style={{
        color: "#1E3A8A",
 
@@ -1575,7 +1780,18 @@ export default function Home() {
       margin: 0,
     }}
   >
-   {language === "ar" ? "لماذا FactRoot؟" : "Why FactRoot?"}
+   {language === "ar" ? (
+  <>
+    <span className="factroot-visually-hidden">
+  لماذا منصة جذر الحقيقة؟
+</span>
+    <span aria-hidden="true">
+      لماذا FactRoot؟
+    </span>
+  </>
+) : (
+  "Why FactRoot?"
+)}
   </h2>
 
   <div
