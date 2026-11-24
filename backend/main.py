@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
 from backend.auth import find_user_by_session, get_connection, router as auth_router
+from backend.ai_verifier import analyze_claim_with_ai
 
 
 # =========================
@@ -566,8 +567,12 @@ def check_news(
             "message": "لا توجد مصادر موثوقة نشطة حاليًا.",
         }
 
-    # نستخدم أول 6 كلمات مهمة للبحث
-    search_words = keywords[:6]
+       # نستخدم الكلمات الأصلية عند البحث في X دون تغيير الحروف العربية
+    search_words = [
+        word.strip(".,،!؟:;؛#@()[]{}\"'")
+        for word in news.text.split()
+        if len(word.strip(".,،!؟:;؛#@()[]{}\"'")) >= 3
+    ][:8]
 
     # =========================
     # البحث داخل الحسابات الحكومية
@@ -633,12 +638,8 @@ def check_news(
                     reverse=True
                 )
 
-                # نعرض فقط التطابقات الجيدة
-                relevant_posts = [
-                    post
-                    for post in analyzed_posts
-                    if post["match_score"] >= 35
-                ]
+               # نرسل أفضل المنشورات إلى AI حتى لو اختلفت الكلمات
+                relevant_posts = analyzed_posts[:5]
 
                 results.append({
                     "account": f"@{account}",
@@ -724,44 +725,43 @@ def check_news(
     )
 
 
-    # أفضل تطابق
-    best_match = (
-        all_posts[0]
-        if all_posts
-        else None
+       # AI هو المسؤول عن القرار النهائي
+    ai_analysis = analyze_claim_with_ai(
+        news.text,
+        all_posts,
     )
 
+    best_match = None
 
-    # =========================
-    # النتيجة النهائية
-    # =========================
+    if ai_analysis.get("available"):
+        verdict = ai_analysis.get("verdict")
+        selected_post_id = ai_analysis.get("selected_post_id")
 
-    if best_match:
-
-        score = best_match["match_score"]
-
-        if score >= 75:
-
-            overall_status = (
-                "يوجد منشور حكومي مطابق بدرجة قوية"
+        if selected_post_id:
+            best_match = next(
+                (
+                    post
+                    for post in all_posts
+                    if str(post.get("id")) == str(selected_post_id)
+                ),
+                None,
             )
 
-        elif score >= 50:
+        if best_match:
+            best_match = {
+                **best_match,
+                "ai_confidence": ai_analysis.get("confidence", 0),
+            }
 
-            overall_status = (
-                "يوجد منشور حكومي مرتبط بالخبر"
-            )
-
+        if verdict == "supported":
+            overall_status = "الخبر مدعوم من مصدر رسمي"
+        elif verdict == "contradicted":
+            overall_status = "الخبر متعارض مع مصدر رسمي"
         else:
-
-            overall_status = (
-                "لم نجد تطابقًا حكوميًا قويًا"
-            )
-
+            overall_status = "لم نجد دليلًا رسميًا كافيًا"
     else:
-
         overall_status = (
-            "لم نجد منشورًا حكوميًا مطابقًا حاليًا"
+            "تعذر تشغيل تحليل الذكاء الاصطناعي مؤقتًا. حاول مرة أخرى."
         )
 
 
@@ -772,6 +772,7 @@ def check_news(
         "accounts_checked": trusted_accounts,
         "best_match": best_match,
         "results": results,
+        "ai_analysis": ai_analysis,
     }
 
     with get_connection() as connection:
