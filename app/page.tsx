@@ -30,6 +30,7 @@ type CheckResult = {
     created_at?: string;
     text: string;
     match_score: number;
+    ai_confidence?: number;
   } | null;
   results: ResultItem[];
   guest_usage?: {
@@ -42,6 +43,16 @@ type CheckResult = {
     score: number;
     message: string;
   };
+  ai_analysis?: {
+  available: boolean;
+  model?: string;
+  verdict?: "supported" | "contradicted" | "insufficient_evidence";
+  confidence?: number;
+  explanation_ar?: string;
+  explanation_en?: string;
+  selected_post_id?: string | null;
+  error?: string;
+};
 };
 
 type GuestUsage = {
@@ -302,7 +313,7 @@ export default function Home() {
     recognition.start();
   }
 
-  function speakText(text: string) {
+  function speakText(text: string, customRate?: number) {
     if (!("speechSynthesis" in window)) {
       setVoiceStatus(
         language === "ar"
@@ -316,7 +327,7 @@ export default function Home() {
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = language === "ar" ? "ar-SA" : "en-US";
-    utterance.rate = language === "ar" ? 1.03 : 0.95;
+    utterance.rate = customRate ?? (language === "ar" ? 1.03 : 0.95);
     utterance.pitch = 1;
 
     const voices = window.speechSynthesis.getVoices();
@@ -350,47 +361,82 @@ export default function Home() {
   }
 
   function readResultAloud() {
-    if (!result) return;
+  if (!result) return;
 
+  if (result.url_safety) {
     if (language === "en") {
-      if (result.url_safety) {
-  const linkResult =
-    result.url_safety.verdict === "unsafe"
-      ? "A known threat was detected. This link is dangerous. Do not open it."
-      : "No known threat was found. However, this does not guarantee that the link is one hundred percent safe.";
+      const linkResult =
+        result.url_safety.verdict === "unsafe"
+          ? "A known threat was detected. This link is dangerous. Do not open it."
+          : "No known threat was found. However, this does not guarantee that the link is one hundred percent safe.";
 
-  speakText(`Verification result. ${linkResult}`);
-  return;
-}
-
-      const statusText = hasStrongMatch
-        ? "A strong match was found in an official government source."
-        : "No strong match was found in the official government sources.";
-      const matchText = result.best_match
-        ? `The official account is ${result.best_match.account}. The match score is ${result.best_match.match_score} percent.`
-        : "No matching official post is currently available.";
-      speakText(`Verification result. ${statusText} ${matchText}`);
+      speakText(`Verification result. ${linkResult}`);
       return;
     }
-   if (result.url_safety) {
-  const linkResult =
-    result.url_safety.verdict === "unsafe"
-      ? "تَمَّ اكتِشافُ تَهْديدٍ مَعْروف. الرَّابِطُ خَطِر. لا تَفْتَحْه."
-      : "لَمْ يَتِمَّ العُثورُ عَلى تَهْديدٍ مَعْروف. وَلَكِنْ، هَذا لا يَضْمَنُ سَلامَةَ الرَّابِط مِئَةً بِالمِئَة.";
 
-  speakText(`نَتيجَةُ التَّحَقُّق. ${linkResult}`);
-  return;
-}
-    const statusText = hasStrongMatch
-      ? "تم العثور على مصدر حكومي مطابق للخبر."
-      : "لم يتم العثور على تطابق حكومي قوي.";
+    const linkResult =
+      result.url_safety.verdict === "unsafe"
+        ? "تم اكتشاف تهديد معروف. الرابط خطر. لا تفتحه."
+        : "لم يتم العثور على تهديد معروف. ولكن هذا لا يضمن سلامة الرابط مئة بالمئة.";
 
-    const bestMatchText = result.best_match
-      ? `الحساب الرسمي ${result.best_match.account}. درجة التطابق ${result.best_match.match_score} بالمئة. نص المنشور: ${result.best_match.text}`
-      : "لم يتم العثور على منشور حكومي مطابق لهذا الخبر حاليًا.";
-
-    speakText(`نتيجة التحقق. ${statusText} ${bestMatchText}`);
+    speakText(`نتيجة التحقق. ${linkResult}`);
+    return;
   }
+
+  const aiResult = result.ai_analysis;
+
+  if (language === "en") {
+    const statusText =
+      aiResult?.available === false
+        ? "AI analysis is temporarily unavailable."
+        : aiResult?.verdict === "supported"
+          ? "The claim is supported by an official source."
+          : aiResult?.verdict === "contradicted"
+            ? "The claim contradicts an official source."
+            : "There is insufficient official evidence.";
+
+    const confidenceText =
+      aiResult?.available &&
+      aiResult.verdict !== "insufficient_evidence" &&
+      typeof aiResult.confidence === "number"
+        ? `AI confidence is ${aiResult.confidence} percent.`
+        : "";
+
+    const explanationText = aiResult?.explanation_en ?? "";
+
+    speakText(
+      `Verification result. ${statusText} ${explanationText} ${confidenceText}`
+    );
+    return;
+  }
+
+  const statusText =
+    aiResult?.available === false
+      ? "تحليل الذكاء الاصطناعي غير متاح مؤقتًا."
+      : aiResult?.verdict === "supported"
+        ? "الخبر مدعوم من مصدر رسمي."
+        : aiResult?.verdict === "contradicted"
+          ? "الخبر متعارض مع مصدر رسمي."
+          : "لم نجد دليلًا رسميًا كافيًا.";
+
+  const confidenceText =
+    aiResult?.available &&
+    aiResult.verdict !== "insufficient_evidence" &&
+    typeof aiResult.confidence === "number"
+      ? `درجة ثقة الذكاء الاصطناعي ${aiResult.confidence} بالمئة.`
+      : "";
+
+  const explanationText = (aiResult?.explanation_ar ?? "").replace(
+  / و/g,
+  "، و"
+);
+
+    speakText(
+  `نتيجة التحقق. ${statusText} ${explanationText} ${confidenceText}`,
+  0.98
+);
+
+}
 
   function readPageAloud() {
     setVoiceStatus("");
@@ -459,9 +505,47 @@ export default function Home() {
     }
   }
 
-  const hasStrongMatch =
-    result?.best_match &&
-    result.best_match.match_score >= 75;
+ const aiVerdict = result?.ai_analysis?.verdict;
+const hasStrongMatch = aiVerdict === "supported";
+const hasContradiction = aiVerdict === "contradicted";
+const aiUnavailable = result?.ai_analysis?.available === false;
+const aiExplanation =
+  language === "ar"
+    ? result?.ai_analysis?.explanation_ar
+    : result?.ai_analysis?.explanation_en;
+
+const aiStatusBackground = aiUnavailable
+  ? "#FEE2E2"
+  : hasStrongMatch
+    ? "#E8F5E9"
+    : hasContradiction
+      ? "#FEE2E2"
+      : "#FFF7E6";
+
+const aiStatusColor = aiUnavailable
+  ? "#B91C1C"
+  : hasStrongMatch
+    ? "#2E7D32"
+    : hasContradiction
+      ? "#B91C1C"
+      : "#B45309";
+
+const aiStatusText =
+  language === "ar"
+    ? aiUnavailable
+      ? "⚠️ تعذر تشغيل تحليل الذكاء الاصطناعي مؤقتًا"
+      : hasStrongMatch
+        ? "✅ الخبر مدعوم من مصدر رسمي"
+        : hasContradiction
+          ? "❌ الخبر متعارض مع مصدر رسمي"
+          : "ℹ️ لم نجد دليلًا رسميًا كافيًا"
+    : aiUnavailable
+      ? "⚠️ AI analysis is temporarily unavailable"
+      : hasStrongMatch
+        ? "✅ The claim is supported by an official source"
+        : hasContradiction
+          ? "❌ The claim contradicts an official source"
+          : "ℹ️ Insufficient official evidence";
 
   const guestLimitReached = !currentUser && guestUsage?.remaining === 0;
 
@@ -1513,22 +1597,40 @@ export default function Home() {
             style={{
               padding: 20,
               borderRadius: 14,
-              background: hasStrongMatch
-                ? "#E8F5E9"
-                : "#FFF7E6",
-              color: hasStrongMatch
-                ? "#2E7D32"
-                : "#B45309",
+              background: aiStatusBackground,
+              color: aiStatusColor,
               fontWeight: "bold",
               fontSize: 19,
               marginBottom: 25,
               textAlign: "center",
             }}
           >
-            {hasStrongMatch
-              ? "✅ تم العثور على مصدر حكومي مطابق للخبر"
-              : "ℹ️ لم يتم العثور على تطابق حكومي قوي"}
+            {aiStatusText}
           </div>
+          {aiExplanation && (
+  <div
+    style={{
+      padding: 18,
+      marginBottom: 25,
+      borderRadius: 12,
+      background: "#EFF6FF",
+      color: "#1E3A8A",
+      lineHeight: 1.9,
+    }}
+  >
+    <strong>
+      {language === "ar" ? "تحليل الذكاء الاصطناعي:" : "AI analysis:"}
+    </strong>{" "}
+    {aiExplanation}
+
+    {result.ai_analysis?.model && (
+      <div style={{ marginTop: 8, fontSize: 12, color: "#64748B" }}>
+        {language === "ar" ? "المودل المستخدم: " : "Model: "}
+        {result.ai_analysis?.model}
+      </div>
+    )}
+  </div>
+)}
 
           {/* أفضل مصدر */}
 
@@ -1547,16 +1649,24 @@ export default function Home() {
                   marginTop: 0,
                 }}
               >
-                🏛️ المصدر الحكومي المطابق
+               {language === "ar"
+                 ? "🏛️ الدليل الرسمي المستخدم"
+                 : "🏛️ Official Evidence"}
               </h3>
 
               <p>
                 <strong>الحساب الرسمي:</strong>{" "}
-                {result.best_match.account}
+                <span dir="ltr" style={{ display: "inline-block" }}>
+                  {result.best_match.account}
+                </span>
               </p>
 
               <p>
-                <strong>درجة التطابق:</strong>{" "}
+                <strong>
+                  {language === "ar"
+                     ? "درجة ثقة الذكاء الاصطناعي:"
+                     : "AI confidence:"}
+                </strong>{" "}
                 <span
                   style={{
                     color: "#2563EB",
@@ -1564,7 +1674,9 @@ export default function Home() {
                     fontSize: 20,
                   }}
                 >
-                  {result.best_match.match_score}%
+                  {result.best_match.ai_confidence ??
+                    result.ai_analysis?.confidence ??
+                    0}%
                 </span>
               </p>
 
@@ -1617,8 +1729,9 @@ export default function Home() {
                 textAlign: "center",
               }}
             >
-              لم يتم العثور على منشور حكومي مطابق
-              لهذا الخبر حاليًا.
+             {language === "ar"
+               ? "لا يوجد مصدر رسمي يمكن عرضه لهذه النتيجة."
+               : "No official source can be displayed for this result."}
             </div>
           )}
 
@@ -1627,7 +1740,7 @@ export default function Home() {
           {result.results.some(
             (item) => item.posts.length > 0
           ) && (
-            <div style={{ marginTop: 35 }}>
+            <div style={{ display: "none", marginTop: 35 }}>
               <h3
                 style={{
                   color: "#1E3A8A",
