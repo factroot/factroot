@@ -96,81 +96,7 @@ class URLCheck(BaseModel):
     url: str
 
 
-@app.post("/check-url")
-def check_url_safety(
-    request: URLCheck,
-    response: Response,
-    factroot_session: str | None = Cookie(default=None),
-    factroot_guest: str | None = Cookie(default=None),
-):
-    from urllib.parse import urlparse
-    import ipaddress
-    import socket
-
-    raw_url = request.url.strip()
-    parsed = urlparse(raw_url)
-
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise HTTPException(status_code=400, detail="أدخل رابطًا صحيحًا يبدأ بـ http أو https.")
-    current_user = find_user_by_session(factroot_session)
-    guest_hash = None
-
-    if not current_user:
-        guest_token = factroot_guest or secrets.token_urlsafe(32)
-        guest_hash = hashlib.sha256(guest_token.encode("utf-8")).hexdigest()
-
-        with get_connection() as connection:
-            guest_attempts = connection.execute(
-                "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
-                (guest_hash,),
-            ).fetchone()[0]
-
-        if guest_attempts >= 3:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "guest_limit_reached",
-                    "message": "استخدمت محاولات الزائر الثلاث. سجّل الدخول للمتابعة.",
-                },
-            )
-
-        if not factroot_guest:
-            response.set_cookie(
-                key="factroot_guest",
-                value=guest_token,
-                max_age=365 * 24 * 60 * 60,
-                httponly=True,
-                samesite="lax",
-                secure=False,
-                path="/",
-            )
-
-    # منع الروابط المحلية والخاصة قبل إرسالها لخدمة الفحص
-    hostname = parsed.hostname.lower()
-    if hostname in ("localhost",) or hostname.endswith(".local"):
-        raise HTTPException(status_code=400, detail="لا يمكن فحص الروابط المحلية.")
-
-    try:
-        addresses = socket.getaddrinfo(hostname, None)
-        for address in addresses:
-            ip = ipaddress.ip_address(address[4][0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                raise HTTPException(status_code=400, detail="الرابط يشير إلى عنوان داخلي أو غير عام.")
-    except socket.gaierror:
-        return {
-            "status": "تعذر التحقق من الرابط",
-            "news": raw_url, "keywords": [], "accounts_checked": [],
-            "best_match": None, "results": [],
-            "url_safety": {"verdict": "unknown", "score": 50,
-                           "message": "تعذر العثور على نطاق الرابط. لا تفتحه قبل التأكد منه."}
-        }
-
-    if not GOOGLE_SAFE_BROWSING_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="فحص الروابط يحتاج GOOGLE_SAFE_BROWSING_API_KEY في ملف backend/.env.local."
-        )
-
+def _build_safe_browsing_request(raw_url):
     api_url = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
     body = {
         "client": {"clientId": "FactRoot", "clientVersion": "1.0"},
@@ -181,6 +107,140 @@ def check_url_safety(
             "threatEntries": [{"url": raw_url}]
         }
     }
+    return api_url, body
+
+
+def _build_url_safety_result(matches):
+    if matches:
+        safety = {
+            "verdict": "unsafe", "score": 0,
+            "message": "تحذير: صنّفت خدمة Google Safe Browsing الرابط على أنه خطر أو مضلل. تجنب فتحه."
+        }
+        status_text = "تم اكتشاف تهديد محتمل في الرابط"
+    else:
+        safety = {
+            "verdict": "no_known_threat", "score": 90,
+            "message": "لم تعثر Google Safe Browsing على تهديد معروف. هذا لا يضمن أن الرابط آمن 100%."
+        }
+        status_text = "لم يتم العثور على تهديد معروف للرابط"
+    return safety, status_text
+
+
+def _reject_private_addresses(addresses, ipaddress):
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise HTTPException(status_code=400, detail="الرابط يشير إلى عنوان داخلي أو غير عام.")
+
+
+def _build_url_check_payload(raw_url, status_text, safety):
+    return {
+        "status": status_text,
+        "news": raw_url,
+        "keywords": [],
+        "accounts_checked": [],
+        "best_match": None,
+        "results": [],
+        "url_safety": safety,
+    }
+
+
+def _insert_url_verification_history(connection, current_user, guest_hash, raw_url, status_text):
+    connection.execute(
+        """
+            INSERT INTO verification_history (
+                user_id, guest_hash, news_text, result_status,
+                best_match_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+        (
+            current_user["id"] if current_user else None,
+            guest_hash,
+            raw_url,
+            status_text,
+            None,
+            int(time.time()),
+        ),
+    )
+
+
+def _add_url_guest_usage(connection, guest_hash, payload):
+    used_attempts = connection.execute(
+        "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
+        (guest_hash,),
+    ).fetchone()[0]
+
+    payload["guest_usage"] = {
+        "used": used_attempts,
+        "limit": 3,
+        "remaining": max(0, 3 - used_attempts),
+    }
+
+
+def _prepare_url_guest_check(response, factroot_guest):
+    guest_token = factroot_guest or secrets.token_urlsafe(32)
+    guest_hash = hashlib.sha256(guest_token.encode("utf-8")).hexdigest()
+
+    with get_connection() as connection:
+        guest_attempts = connection.execute(
+            "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
+            (guest_hash,),
+        ).fetchone()[0]
+
+    if guest_attempts >= 3:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "guest_limit_reached",
+                "message": "استخدمت محاولات الزائر الثلاث. سجّل الدخول للمتابعة.",
+            },
+        )
+
+    if not factroot_guest:
+        response.set_cookie(
+            key="factroot_guest",
+            value=guest_token,
+            max_age=365 * 24 * 60 * 60,
+            httponly=True,
+            samesite="lax",
+            secure=False,
+            path="/",
+        )
+    return guest_hash
+
+
+def _validate_url_hostname(parsed):
+    hostname = parsed.hostname.lower()
+    if hostname in ("localhost",) or hostname.endswith(".local"):
+        raise HTTPException(status_code=400, detail="لا يمكن فحص الروابط المحلية.")
+    return hostname
+
+
+def _check_url_dns(hostname, raw_url, socket, ipaddress):
+    try:
+        addresses = socket.getaddrinfo(hostname, None)
+        _reject_private_addresses(addresses, ipaddress)
+    except socket.gaierror:
+        return {
+            "status": "تعذر التحقق من الرابط",
+            "news": raw_url, "keywords": [], "accounts_checked": [],
+            "best_match": None, "results": [],
+            "url_safety": {"verdict": "unknown", "score": 50,
+                           "message": "تعذر العثور على نطاق الرابط. لا تفتحه قبل التأكد منه."}
+        }
+    return None
+
+
+def _require_google_safe_browsing_api_key():
+    if not GOOGLE_SAFE_BROWSING_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="فحص الروابط يحتاج GOOGLE_SAFE_BROWSING_API_KEY في ملف backend/.env.local."
+        )
+
+
+def _request_safe_browsing_data(api_url, body):
     try:
         response = requests.post(
             api_url, params={"key": GOOGLE_SAFE_BROWSING_API_KEY},
@@ -206,61 +266,63 @@ def check_url_safety(
         raise HTTPException(status_code=504, detail="انتهت مهلة الاتصال بخدمة فحص الروابط. حاول لاحقًا.")
     except requests.RequestException:
         raise HTTPException(status_code=502, detail="تعذر الاتصال بخدمة فحص الروابط. حاول لاحقًا.")
+    return data
 
-    matches = data.get("matches", [])
-    if matches:
-        safety = {
-            "verdict": "unsafe", "score": 0,
-            "message": "تحذير: صنّفت خدمة Google Safe Browsing الرابط على أنه خطر أو مضلل. تجنب فتحه."
-        }
-        status_text = "تم اكتشاف تهديد محتمل في الرابط"
-    else:
-        safety = {
-            "verdict": "no_known_threat", "score": 90,
-            "message": "لم تعثر Google Safe Browsing على تهديد معروف. هذا لا يضمن أن الرابط آمن 100%."
-        }
-        status_text = "لم يتم العثور على تهديد معروف للرابط"
 
-    payload = {
-        "status": status_text,
-        "news": raw_url,
-        "keywords": [],
-        "accounts_checked": [],
-        "best_match": None,
-        "results": [],
-        "url_safety": safety,
-    }
+def _get_safe_browsing_matches(data):
+    return data.get("matches", [])
 
+
+def _persist_url_check_result(current_user, guest_hash, raw_url, status_text, payload):
     with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO verification_history (
-                user_id, guest_hash, news_text, result_status,
-                best_match_json, created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                current_user["id"] if current_user else None,
-                guest_hash,
-                raw_url,
-                status_text,
-                None,
-                int(time.time()),
-            ),
+        _insert_url_verification_history(
+            connection, current_user, guest_hash, raw_url, status_text
         )
 
         if not current_user:
-            used_attempts = connection.execute(
-                "SELECT COUNT(*) FROM verification_history WHERE guest_hash = ?",
-                (guest_hash,),
-            ).fetchone()[0]
+            _add_url_guest_usage(connection, guest_hash, payload)
 
-            payload["guest_usage"] = {
-                "used": used_attempts,
-                "limit": 3,
-                "remaining": max(0, 3 - used_attempts),
-            }
+
+@app.post("/check-url")
+def check_url_safety(
+    request: URLCheck,
+    response: Response,
+    factroot_session: str | None = Cookie(default=None),
+    factroot_guest: str | None = Cookie(default=None),
+):
+    from urllib.parse import urlparse
+    import ipaddress
+    import socket
+
+    raw_url = request.url.strip()
+    parsed = urlparse(raw_url)
+
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="أدخل رابطًا صحيحًا يبدأ بـ http أو https.")
+    current_user = find_user_by_session(factroot_session)
+    guest_hash = None
+
+    if not current_user:
+        guest_hash = _prepare_url_guest_check(response, factroot_guest)
+
+    # منع الروابط المحلية والخاصة قبل إرسالها لخدمة الفحص
+    hostname = _validate_url_hostname(parsed)
+
+    dns_result = _check_url_dns(hostname, raw_url, socket, ipaddress)
+    if dns_result is not None:
+        return dns_result
+
+    _require_google_safe_browsing_api_key()
+
+    api_url, body = _build_safe_browsing_request(raw_url)
+    data = _request_safe_browsing_data(api_url, body)
+
+    matches = _get_safe_browsing_matches(data)
+    safety, status_text = _build_url_safety_result(matches)
+
+    payload = _build_url_check_payload(raw_url, status_text, safety)
+
+    _persist_url_check_result(current_user, guest_hash, raw_url, status_text, payload)
 
     return payload
 
@@ -270,8 +332,7 @@ def check_url_safety(
 # تنظيف وتوحيد النص العربي
 # =========================
 
-def clean_text(text):
-
+def _remove_urls_and_markers(text):
     # إزالة الروابط
     text = re.sub(
         r"https?://\S+",
@@ -283,6 +344,10 @@ def clean_text(text):
     text = text.replace("#", " ")
     text = text.replace("@", " ")
 
+    return text
+
+
+def _normalize_arabic_characters(text):
     # إزالة التشكيل العربي
     arabic_diacritics = re.compile(
         r"[\u0617-\u061A\u064B-\u0652\u0670\u0640]"
@@ -336,6 +401,10 @@ def clean_text(text):
         "ي"
     )
 
+    return text
+
+
+def _remove_punctuation_and_normalize_spaces(text):
     # =========================
     # إزالة علامات الترقيم والرموز
     # =========================
@@ -356,12 +425,40 @@ def clean_text(text):
         text
     )
 
+    return text
+
+
+def clean_text(text):
+    text = _remove_urls_and_markers(text)
+    text = _normalize_arabic_characters(text)
+    text = _remove_punctuation_and_normalize_spaces(text)
+
     return text.strip().lower()
 
 
 # =========================
 # استخراج الكلمات المهمة
 # =========================
+
+def _filter_keywords(words, stop_words):
+    keywords = []
+
+    for word in words:
+
+        # تجاهل الكلمات القصيرة جدًا
+        if len(word) < 3:
+            continue
+
+        # تجاهل الكلمات العامة
+        if word in stop_words:
+            continue
+
+        # عدم تكرار الكلمة
+        if word not in keywords:
+            keywords.append(word)
+
+    return keywords
+
 
 def extract_keywords(text):
 
@@ -406,23 +503,7 @@ def extract_keywords(text):
         "الذين",
     }
 
-    keywords = []
-
-    for word in words:
-
-        # تجاهل الكلمات القصيرة جدًا
-        if len(word) < 3:
-            continue
-
-        # تجاهل الكلمات العامة
-        if word in stop_words:
-            continue
-
-        # عدم تكرار الكلمة
-        if word not in keywords:
-            keywords.append(word)
-
-    return keywords
+    return _filter_keywords(words, stop_words)
 
 
 # =========================
@@ -493,6 +574,58 @@ def calculate_match(news_text, post_text):
 # =========================
 # التحقق من الخبر
 # =========================
+
+def _collect_posts(results):
+    all_posts = []
+
+    for result in results:
+
+        for post in result.get(
+            "posts",
+            []
+        ):
+
+            all_posts.append({
+                "account": result["account"],
+                **post
+            })
+
+
+    return all_posts
+
+
+def _analyze_posts(news, posts):
+    analyzed_posts = []
+
+    for post in posts:
+
+        post_text = post.get(
+            "text",
+            ""
+        )
+
+        score = calculate_match(
+            news.text,
+            post_text
+        )
+
+        analyzed_posts.append({
+            "id": post.get("id"),
+            "created_at": post.get(
+                "created_at"
+            ),
+            "text": post_text,
+            "match_score": score,
+        })
+
+    # الأعلى تطابقًا أولًا
+    analyzed_posts.sort(
+        key=lambda x: x["match_score"],
+        reverse=True
+    )
+
+    return analyzed_posts
+
 
 @app.post("/check")
 def check_news(
@@ -609,34 +742,7 @@ def check_news(
                     []
                 )
 
-                analyzed_posts = []
-
-                for post in posts:
-
-                    post_text = post.get(
-                        "text",
-                        ""
-                    )
-
-                    score = calculate_match(
-                        news.text,
-                        post_text
-                    )
-
-                    analyzed_posts.append({
-                        "id": post.get("id"),
-                        "created_at": post.get(
-                            "created_at"
-                        ),
-                        "text": post_text,
-                        "match_score": score,
-                    })
-
-                # الأعلى تطابقًا أولًا
-                analyzed_posts.sort(
-                    key=lambda x: x["match_score"],
-                    reverse=True
-                )
+                analyzed_posts = _analyze_posts(news, posts)
 
                # نرسل أفضل المنشورات إلى AI حتى لو اختلفت الكلمات
                 relevant_posts = analyzed_posts[:5]
@@ -700,20 +806,7 @@ def check_news(
     # جمع جميع المنشورات
     # =========================
 
-    all_posts = []
-
-    for result in results:
-
-        for post in result.get(
-            "posts",
-            []
-        ):
-
-            all_posts.append({
-                "account": result["account"],
-                **post
-            })
-
+    all_posts = _collect_posts(results)
 
     # ترتيب المنشورات حسب التطابق
     all_posts.sort(
