@@ -46,6 +46,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, language }
         confirmationPlaceholder: "أعيدي كتابة كلمة المرور",
         loading: "جاري التنفيذ...",
         mismatch: "كلمتا المرور غير متطابقتين.",
+        invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
         genericError: "تعذر إكمال العملية. حاولي مرة أخرى.",
         connectionError: "تعذر الاتصال بالخادم. تأكدي أن Backend يعمل.",
       }
@@ -66,6 +67,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, language }
         confirmationPlaceholder: "Enter the password again",
         loading: "Please wait...",
         mismatch: "The passwords do not match.",
+        invalidCredentials: "Invalid email or password.",
         genericError: "The request could not be completed. Please try again.",
         connectionError: "The server could not be reached. Make sure the backend is running.",
       };
@@ -139,17 +141,28 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, language }
     setLoading(true);
     try {
       const response = await fetch(`http://localhost:8000/auth/${mode}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "register" ? { name, email, password } : { email, password }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+        mode === "register"
+            ? { name, email, password }
+            : { email, password }
+    ),
+});
+
+const data = await response.json();
+
+if (!response.ok) {
+    if (mode === "login" && response.status === 401) {
+        setError(copy.invalidCredentials);
+    } else {
         setError(data.detail || copy.genericError);
-        return;
-      }
-      onAuthenticated(data.user);
+    }
+    return;
+}
+
+onAuthenticated(data.user);
       setName("");
       setEmail("");
       setPassword("");
