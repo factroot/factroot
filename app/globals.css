@@ -254,3 +254,271 @@ html.factroot-dark .factroot-round-button {
   border-color: #36465f !important;
   color: #93c5fd !important;
 }
+
+/* FACTROOT RESPONSIVE PHASE 1 */
+
+/* Tablets: 701px to 1024px */
+@media (min-width: 701px) and (max-width: 1024px) {
+  .factroot-home {
+    padding: 34px 18px !important;
+  }
+
+  .factroot-header {
+    padding: 18px 24px !important;
+    gap: 18px !important;
+  }
+
+  .factroot-logo {
+    width: 96px !important;
+    height: 96px !important;
+  }
+
+  .factroot-nav {
+    width: 100%;
+    padding-right: 0 !important;
+    justify-content: center !important;
+    gap: 18px !important;
+    font-size: 15px !important;
+  }
+
+  .factroot-hero h1 {
+    font-size: clamp(34px, 4.2vw, 42px) !important;
+  }
+
+  .factroot-hero p {
+    font-size: 19px !important;
+  }
+
+  .factroot-check {
+    padding: 34px !important;
+  }
+
+  .factroot-home #about {
+    padding: 38px 30px !important;
+  }
+}
+
+/* Phones: 700px and below */
+@media (max-width: 700px) {
+  .factroot-home {
+    padding: 24px 12px !important;
+  }
+
+  .factroot-header {
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 14px 12px !important;
+    gap: 14px !important;
+  }
+
+  .factroot-header > div:first-child {
+    justify-content: center !important;
+    max-width: 100%;
+    gap: 10px !important;
+  }
+
+  .factroot-logo {
+    width: 64px !important;
+    height: 64px !important;
+  }
+
+  .factroot-header h1 {
+    font-size: 30px !important;
+    line-height: 1.2 !important;
+  }
+
+  .factroot-header p {
+    font-size: 12px !important;
+  }
+
+  .factroot-nav {
+    width: 100%;
+    padding-right: 0 !important;
+    justify-content: center !important;
+    gap: 12px !important;
+    font-size: 14px !important;
+  }
+
+  .factroot-hero {
+    margin-bottom: 28px !important;
+  }
+
+  .factroot-hero h1 {
+    font-size: clamp(26px, 7vw, 34px) !important;
+    line-height: 1.35 !important;
+  }
+
+  .factroot-hero p {
+    font-size: 16px !important;
+    line-height: 1.8 !important;
+    padding-inline: 4px;
+  }
+
+  .factroot-check {
+    padding: 18px 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .factroot-check #news-input {
+    min-height: 180px;
+    font-size: 16px !important;
+  }
+
+  .factroot-result {
+    padding: 14px !important;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .factroot-home #about {
+    padding: 26px 18px !important;
+    margin: 50px auto !important;
+  }
+
+  .factroot-home #about h2 {
+    font-size: 26px !important;
+  }
+
+  .factroot-home #about p {
+    font-size: 16px !important;
+    line-height: 1.85 !important;
+  }
+
+  .factroot-home footer {
+    margin-top: 60px !important;
+    padding: 16px 18px !important;
+  }
+
+  .factroot-home footer h2 {
+    font-size: 23px !important;
+  }
+
+  .factroot-home button,
+  .factroot-home textarea {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* FACTROOT HEADER RESPONSIVE FIX */
+
+@media (max-width: 700px) {
+  .factroot-home .factroot-header {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 12px 10px !important;
+    gap: 8px 10px !important;
+  }
+
+  /* Logo and brand */
+  .factroot-home .factroot-header > div:first-child {
+    flex: 0 0 48% !important;
+    width: 48% !important;
+    max-width: 48% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .factroot-home .factroot-logo {
+    width: 48px !important;
+    height: 48px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .factroot-home .factroot-header > div:first-child > div {
+    min-width: 0 !important;
+  }
+
+  .factroot-home .factroot-header h1 {
+    font-size: 23px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap;
+  }
+
+  .factroot-home .factroot-header p {
+    font-size: 9px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Theme and language controls */
+  .factroot-home .factroot-nav > div:first-child {
+    top: 10px !important;
+    right: 10px !important;
+    transform: scale(.58) !important;
+    transform-origin: top right !important;
+  }
+
+  /* Navigation stays horizontal */
+  .factroot-home .factroot-nav {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px 14px !important;
+    padding: 0 !important;
+    margin: 10px 0 0 !important;
+    font-size: 13px !important;
+  }
+
+  .factroot-home .factroot-nav > button {
+    font-size: 13px !important;
+    white-space: nowrap !important;
+  }
+
+  .factroot-home .factroot-nav > button:last-child {
+    padding: 7px 12px !important;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 360px) {
+  .factroot-home .factroot-header > div:first-child {
+    flex-basis: 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+    gap: 6px !important;
+  }
+
+  .factroot-home .factroot-logo {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .factroot-home .factroot-header h1 {
+    font-size: 20px !important;
+  }
+
+  .factroot-home .factroot-header p {
+    font-size: 8px !important;
+  }
+
+  .factroot-home .factroot-nav > div:first-child {
+    transform: scale(.48) !important;
+    top: 10px !important;
+    right: 8px !important;
+  }
+
+  .factroot-home .factroot-nav {
+    gap: 7px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .factroot-home .factroot-nav > button {
+    font-size: 12px !important;
+  }
+
+  .factroot-home .factroot-nav > button:last-child {
+    padding: 6px 9px !important;
+  }
+}
